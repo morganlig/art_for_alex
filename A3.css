@@ -1,0 +1,14 @@
+@media print {
+  /* paper size and orientation */
+  @page {
+    size: A4 landscape;
+    margin: 1in;
+  }
+}
+  
+  /* page break */
+  .level1 {
+    break-before: page;
+  }
+  
+}

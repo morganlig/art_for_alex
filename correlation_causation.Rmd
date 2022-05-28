@@ -1,0 +1,134 @@
+---
+output:
+  html_document:
+    toc: false
+    # change to true for a self-contained document, but it'll be a litte slower for Pandoc to render
+    self_contained: false
+    css: ['A3.css']
+knit: pagedown::chrome_print
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE,
+                      message = FALSE,
+                      warning = FALSE)
+```
+
+```{r}
+library(tidyverse)
+library(here)
+library(lubridate)
+library(scales)
+library(showtext)
+library(glue)
+library(ggtext)
+```
+
+```{r, include=FALSE}
+## Loading Google fonts (https://fonts.google.com/)
+font_add_google("Vidaloka", "Vidaloka")
+## Automatically use showtext to render text
+showtext_auto()
+# https://github.com/yixuan/showtext/issues/7
+# https://journal.r-project.org/archive/2015-1/qiu.pdf
+# `x11()` on Linux, or `quartz()` on Mac OS
+myFont1 <- "Vidaloka"
+alexblue <- "#00ccee"
+compred <- "#ee2200"
+```
+
+```{r}
+# Function factory for secondary axis transforms
+train_sec <- function(primary, secondary, na.rm = TRUE) {
+  # Thanks Henry Holm for including the na.rm argument!
+  from <- range(secondary, na.rm = na.rm)
+  to   <- range(primary, na.rm = na.rm)
+  # Forward transform for the data
+  forward <- function(x) {
+    rescale(x, from = from, to = to)
+  }
+  # Reverse transform for the secondary axis
+  reverse <- function(x) {
+    rescale(x, from = to, to = from)
+  }
+  list(fwd = forward, rev = reverse)
+}
+```
+
+```{r}
+organsales <- read_csv(here("source", "home organ wholesale sales in US.csv"))
+```
+
+```{r}
+icecream1 <- read_csv(here("source", "IceaCreamFrozenDessert.csv"))
+icecream1$Year <- year(dmy(icecream1$DATE))
+icecream <- icecream1 %>%
+  group_by(Year) %>%
+  mutate(million_gallons = sum(value)) %>%
+  ungroup() %>%
+  distinct(Year, million_gallons) %>%
+  filter(Year > 2004,
+         Year < 2016)
+```
+
+```{r}
+comb_data <- full_join(icecream, organsales, by = 'Year') %>%
+  mutate(Year = as.character(Year))
+
+res <- cor.test(comb_data$millions_USD, comb_data$million_gallons,
+                    method = "pearson")
+corr_perc <- percent(res$estimate, accuracy = 0.1)
+
+comb <- comb_data
+
+sec <- with(comb_data, train_sec(million_gallons, millions_USD))
+```
+
+```{r, fig.height=17, fig.width=26}
+causeplot <- comb %>%
+  ggplot(aes(x = Year)) +
+  geom_point(aes(y = million_gallons), size=10, alpha = 0.5, color = alexblue, shape = 16) +
+  geom_line(aes(y = million_gallons, group = 1), size=4, alpha = 0.5, color = alexblue) +
+  geom_text(data = filter(comb, Year == 2011), 
+            aes(x = Year, 
+                y = million_gallons, 
+                label = "Consumption of Ice Cream\n(in millions of gallons)"), 
+            vjust = -1.85, hjust = 0.5, color = alexblue, family = myFont1, size = 30, lineheight = .5) +
+  geom_point(aes(y = sec$fwd(millions_USD)), size=10, alpha = 0.5, color=compred, shape = 15) +
+  geom_line(aes(y = sec$fwd(millions_USD), group = 1), size=4, color=compred, alpha = 0.5) +
+  geom_text(data = filter(comb, Year == 2009), 
+            aes(x = Year, 
+                y = sec$fwd(millions_USD), 
+                label = "Home Organ Sales\n(in millions of dollars)"), 
+            vjust = 1.85, hjust = 0.5, family = myFont1, color=compred, size = 30, lineheight = .5) +
+  scale_y_continuous(sec.axis = sec_axis(~sec$rev(.)), expand = c(0.18,0.18)) +
+  geom_text(data = filter(comb, Year == 2014), 
+            aes(x = Year, 
+                y = 1800, 
+                label = glue("Correlation: {corr_perc}")), 
+            vjust = 1, hjust = 1, family = myFont1, color="black", size = 36) +
+  coord_cartesian(clip = 'off') +
+  labs(title = "A Decade of Decline",
+       # <span style='color:#D55E00;'>home organ sales</span>",
+       subtitle = "Consume more ice cream to increase instrument industry's home organ sales",
+       caption = "\nSources:\nkaggle, Icecream consumption USA\nStatista, Home Organ Wholesale Sales in US") +
+  theme_classic() +
+  theme(
+    text = element_text(family = myFont1, size = 100),
+    axis.title.y.left = element_blank(),
+    axis.text.y.left = element_text(color = alexblue, hjust = 0.5),
+    axis.ticks.y.left = element_line(color = alexblue),
+    axis.text.y.right = element_text(color = compred, hjust = 0.5),
+    axis.ticks.y.right = element_line(color = compred),
+    axis.line.y = element_blank(),
+    axis.title.x = element_blank(),
+    plot.caption.position = "plot",
+    plot.title.position = "plot",
+    plot.title = element_text(hjust = 0.5, size = 150),
+    plot.subtitle = element_text(hjust = 0.5),
+    plot.caption = element_text(hjust = 0, lineheight = 0.5, color = "gray60", face = "italic")
+  )
+
+causeplot
+```
+
